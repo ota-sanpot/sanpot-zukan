@@ -208,7 +208,10 @@
     </div>
     <canvas id="resultCanvas" width="760" height="760"></canvas>
     <div class="rowbtns">
-      <button class="btn" onclick="App.saveImage()">📷 画像を保存</button>
+      <button class="btn" style="min-width:200px" onclick="App.show('hub')">🗺 マップを見る</button>
+    </div>
+    <div class="rowbtns">
+      <button class="btn ghost" onclick="App.saveImage()">📷 画像を保存</button>
       <button class="btn ghost" onclick="App.shareImage()">↗ シェア</button>
     </div>
     <div class="footnote">保存した画像は X / Instagram / Threads にそのまま貼れます。</div>
@@ -262,6 +265,7 @@ const STATIONS = [
       {id:"st_kamata_1", name:"大田区民ホール・アプリコ", rarity:"N", icon:"🎵", trivia:"コンサートが開かれる区民ホール。地下に大ホール。", walk:3},
       {id:"st2_kamata_0", name:"蒲田西口商店街", rarity:"N", icon:"🌅", trivia:"戦後のヤミ市から復興。2本のアーケードが続く西口の顔。", walk:1},
       {id:"st2_kamata_1", name:"日本舶用ディーゼル機関発祥の地", rarity:"N", icon:"⚙️", trivia:"大正時代の新潟鉄工所蒲田工場で国産ディーゼルが誕生。", walk:10},
+      {id:"st3_kamata_0", name:"大田区役所本庁舎", rarity:"N", icon:"🏢", trivia:"平成10年に大森から蒲田駅前へ移転。新大田区百景の一つ。", walk:1},
     ]},
   { id:"nagahara", name:"長原", pos:[28.7,28.6], spots:[
       {id:"st_nagahara_0", name:"小池公園", rarity:"N", icon:"🦆", trivia:"洗足池が大池、ここは小池。カワセミも来る水辺の公園。", walk:4},
@@ -407,6 +411,7 @@ const STATIONS = [
       {id:"st2_heiwajima_0", name:"旧東海道 美原通り", rarity:"SR", icon:"🛤️", trivia:"第一京浜の建設時に拡幅を免れ、旧東海道の面影を残す道。", walk:5},
       {id:"st2_heiwajima_1", name:"平和の森公園", rarity:"R", icon:"🌳", trivia:"アーチェリー場や相撲場も備える区内最大級の公園。", walk:10},
       {id:"st2_heiwajima_2", name:"大森スポーツセンター", rarity:"N", icon:"🏀", trivia:"アリーナと小ホールを備え、柔道から集会まで使える拠点。", walk:6},
+      {id:"st3_heiwajima_0", name:"ボートレース平和島", rarity:"R", icon:"🚤", trivia:"府中市が施行する公営ボートレース場。無料バスも運行。", walk:10},
     ]},
   { id:"omorimachi", name:"大森町", pos:[45.9,49], spots:[
       {id:"omori_5", name:"大森ふるさとの浜辺公園", rarity:"SR", icon:"🏖️", trivia:"砂浜と干潟を持つ、都内初の区立海浜公園。"},
@@ -471,9 +476,12 @@ const STATIONS = [
       {id:"st_tenkubashi_1", name:"五十間鼻無縁仏堂", rarity:"SR", icon:"🕯️", trivia:"多摩川河口の水難者を弔うお堂。初日の出の名所として人気。", walk:10},
       {id:"st2_tenkubashi_0", name:"鴎稲荷神社", rarity:"N", icon:"🕊️", trivia:"漁師の祈りに鴎が舞い大漁になった伝説の残る稲荷。", walk:6},
       {id:"st2_tenkubashi_1", name:"玉川弁財天", rarity:"N", icon:"💰", trivia:"羽田七福いなり番外。旧穴守の地に由来する弁財天。", walk:9},
+      {id:"st3_tenkubashi_0", name:"羽田イノベーションシティ", rarity:"SR", icon:"🏙️", trivia:"天空橋駅直結の大型複合施設。無料の足湯スカイデッキが名物。"},
+      {id:"st3_tenkubashi_1", name:"多摩川スカイブリッジ", rarity:"R", icon:"🌉", trivia:"2022年開通。羽田と川崎を結ぶ全長約675メートルの橋。", walk:10},
     ]},
   { id:"haneda_t3", name:"羽田空港第3ターミナル", pos:[65.6,66.8], spots:[
       {id:"st_hanedat3_0", name:"第3ターミナル展望デッキ", rarity:"SR", icon:"🌃", trivia:"24時間開放の展望デッキ。国際線の離着陸と夜景を間近に。"},
+      {id:"st3_hanedat3_0", name:"羽田エアポートガーデン", rarity:"R", icon:"🛍️", trivia:"第3ターミナル直結。展望天然温泉と日本最大級の空港ホテル。"},
     ]},
   { id:"haneda_t12", name:"羽田空港第1・第2ターミナル", pos:[74,63.9], spots:[
       {id:"haneda_0", name:"羽田空港", rarity:"UR", icon:"✈️", trivia:"日本の空の玄関。国内屈指の乗降客数。"},
@@ -536,7 +544,7 @@ function stDone(st){ return st.spots.length>0 && stWent(st)===st.spots.length; }
 const App = {
   cur:null,
 
-  start(){ this.show('hub'); },
+  start(){ this.show('result'); },
 
   show(id){
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
