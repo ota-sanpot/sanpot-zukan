@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>サンポット図鑑 | 大田区スポットチェックリスト</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#0f1420">
+<!--
+  サンポット図鑑 v2 — 大田区スポットチェックリスト（駅ごと）
+  2026-07-14 CEO指示でゲーム（探索・遭遇）を廃止し、駅ごとのスポット一覧＋「行きたい/行った」の記録アプリへ刷新。
+  単一HTML・ログイン不要・進捗はlocalStorage（v1のセーブは「行った」として自動引き継ぎ）。
+  ※スポットのトリビアは一次資料で裏取り済み（出典台帳は TRIVIA_SOURCES.md）。
+  ※地図の形: 国土数値情報「行政区域データ」（国土交通省）を加工して作成。Google Maps等のトレースは不使用。
+-->
+<style>
+  :root{
+    --bg:#0f1420; --bg2:#161d2e; --panel:#1d2740; --ink:#eaf0ff; --sub:#9fb0d0;
+    --line:#2c395a; --accent:#ffcc44; --accent2:#4fd1c5; --pink:#ff7aa2;
+    --n:#8aa0c8; --r:#5ac8fa; --sr:#c58bff; --ur:#ffcc44;
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);}
+  body{overflow-x:hidden;}
+  #app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;position:relative;}
+  .screen{display:none;flex:1;flex-direction:column;padding:14px;gap:12px;}
+  .screen.active{display:flex;animation:screenIn .3s ease both;}
+  @keyframes screenIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  h1,h2,h3{margin:0;font-weight:800;letter-spacing:.02em;}
+  .muted{color:var(--sub);font-size:12px;line-height:1.6;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn{background:linear-gradient(180deg,#ffdf7f,#ffc23e);color:#20160a;font-weight:800;border-radius:12px;padding:13px 16px;font-size:15px;box-shadow:0 6px 18px rgba(255,196,62,.22),var(--shadow);transition:transform .08s;}
+  .btn:active{transform:translateY(1px) scale(.99);}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none;}
+  .btn.sm{padding:9px 12px;font-size:13px;border-radius:10px;}
+
+  /* ---------- Title ---------- */
+  #title{justify-content:center;align-items:center;text-align:center;gap:18px;
+    background:radial-gradient(120% 80% at 50% 0%, #1a2e4a 0%, var(--bg) 60%);}
+  .logoimg{width:230px;height:230px;border-radius:50%;
+    filter:drop-shadow(0 12px 34px rgba(0,0,0,.5));
+    animation:logoPop .5s cubic-bezier(.2,.9,.3,1.25) both;}
+  @keyframes logoPop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+  .tsub{color:var(--sub);font-size:13px;line-height:1.8;}
+  .pill{display:inline-block;padding:4px 10px;border:1px solid var(--line);border-radius:999px;color:var(--sub);font-size:11px;margin:2px;}
+
+  /* ---------- Topbar ---------- */
+  .topbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .topbar .grow{flex:1;}
+  .prog{height:8px;background:var(--line);border-radius:999px;overflow:hidden;}
+  .prog>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));width:0;transition:width .4s;}
+
+  /* ---------- Hub map（海の上に実形の大田区） ---------- */
+  .maparea{position:relative;aspect-ratio:1/1;border-radius:18px;overflow:hidden;
+    background:
+      radial-gradient(70% 55% at 72% 30%, rgba(48,110,170,.28), transparent 70%),
+      linear-gradient(165deg,#102138,#0b1526);
+    border:1px solid var(--line);box-shadow:var(--shadow);}
+  .mapsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  .mapsvg .land{fill:url(#landfill);stroke:#3e5787;stroke-width:1;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.5));}
+  .mapsvg .planedeco{font-size:7px;opacity:.5;}
+  .mapsvg .rail{fill:none;stroke-width:1.4;opacity:.55;stroke-linecap:round;stroke-linejoin:round;}
+  .mapsvg .riverline{fill:none;stroke:rgba(96,168,220,.38);stroke-width:7;stroke-linecap:round;}
+  .mapsvg .wave{fill:none;stroke:rgba(127,180,216,.55);stroke-width:1.6;stroke-linecap:round;animation:waveTwinkle 3.2s ease-in-out infinite;}
+  .mapsvg .wave.w2{animation-delay:1.1s}
+  .mapsvg .wave.w3{animation-delay:2.2s}
+  @keyframes waveTwinkle{0%,100%{opacity:.15}50%{opacity:.8}}
+  /* ピンは装飾のみ。タップ判定はmaparea全体で「最寄り駅」を拾う（小さいピンを狙わなくてよい） */
+  .stnode{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+    animation:nodePop .45s cubic-bezier(.2,.9,.3,1.35) both;pointer-events:none;background:transparent;padding:0;}
+  @keyframes nodePop{from{opacity:0;transform:translate(-50%,-50%) scale(.55)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  .stnode i{display:block;width:15px;height:15px;border-radius:50%;background:var(--panel);border:3px solid var(--lc,#8aa0c8);
+    box-shadow:0 1px 5px rgba(0,0,0,.55);transition:transform .12s, box-shadow .12s;}
+  .stnode.sel i{transform:scale(1.35);box-shadow:0 0 12px var(--lc,#8aa0c8);}
+  .maparea{cursor:pointer;}
+  /* 駅名の吹き出し（ピンタップ→表示、吹き出しタップ→詳細へ） */
+  .mapcallout{position:absolute;transform:translate(-50%,-130%);display:none;z-index:6;
+    background:linear-gradient(180deg,var(--panel),var(--bg2));color:var(--ink);
+    border:1px solid var(--accent2);border-radius:12px;padding:8px 14px;
+    font-size:13.5px;font-weight:800;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.6);
+    animation:calloutPop .18s ease both;}
+  .mapcallout.show{display:block;}
+  .mapcallout small{display:block;font-size:10px;font-weight:600;color:var(--accent2);letter-spacing:.06em;margin-top:2px;}
+  .mapcallout::after{content:"";position:absolute;left:50%;bottom:-6px;transform:translateX(-50%) rotate(45deg);
+    width:10px;height:10px;background:var(--bg2);border-right:1px solid var(--accent2);border-bottom:1px solid var(--accent2);}
+  @keyframes calloutPop{from{opacity:0;transform:translate(-50%,-110%) scale(.85)}to{opacity:1;transform:translate(-50%,-130%) scale(1)}}
+  .stnode.some i{background:#123c3a;border-color:var(--accent2);}
+  .stnode.done i{background:#4d3a08;border-color:var(--accent);box-shadow:0 0 10px rgba(255,204,68,.6);}
+
+  /* ---------- 駅リスト ---------- */
+  .linehead{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--sub);margin-top:6px;}
+  .linehead::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--lc,#8aa0c8);}
+  .strow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--lc,var(--line));
+    border-radius:12px;padding:11px 12px;width:100%;text-align:left;color:var(--ink);}
+  .strow:active{transform:translateY(1px);}
+  .strow .nm{font-size:14.5px;font-weight:800;}
+  .strow .cnt{margin-left:auto;font-size:11.5px;color:var(--sub);white-space:nowrap;}
+  .strow .cnt b{color:var(--accent);} .strow .cnt em{color:var(--accent2);font-style:normal;}
+  .stlist{display:flex;flex-direction:column;gap:8px;}
+
+  /* ---------- スポットカード（3状態つき） ---------- */
+  .spotlist{display:flex;flex-direction:column;gap:10px;}
+  .spot2{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+  .spot2 .hd{display:flex;gap:10px;align-items:flex-start;}
+  .spot2 .ic{font-size:26px;line-height:1.2;}
+  .spot2 .nm{font-size:15px;font-weight:800;}
+  .spot2 .tv{font-size:12px;color:var(--sub);line-height:1.7;}
+  .tri{display:flex;gap:8px;}
+  .tbtn{flex:1;padding:9px 8px;border-radius:10px;font-size:12.5px;font-weight:800;background:var(--bg2);color:var(--sub);border:1px solid var(--line);transition:all .12s;}
+  .tbtn.want.on{background:rgba(79,209,197,.16);color:var(--accent2);border-color:var(--accent2);}
+  .tbtn.went.on{background:rgba(255,204,68,.16);color:var(--accent);border-color:var(--accent);}
+  .stinfo{font-size:11.5px;color:var(--sub);}
+
+  /* ---------- 行きたいまとめ ---------- */
+  .wishgroup h3{font-size:13.5px;color:var(--accent2);margin:10px 0 6px;}
+  .empty{color:var(--sub);font-size:13px;text-align:center;padding:30px 10px;line-height:1.9;}
+
+  /* ---------- Result ---------- */
+  #resultCanvas{width:100%;max-width:380px;margin:0 auto;border-radius:16px;box-shadow:var(--shadow);display:block;}
+  .rowbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+  .footnote{color:var(--sub);font-size:10.5px;text-align:center;line-height:1.7;border-top:1px dashed var(--line);padding-top:8px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TITLE -->
+  <section id="title" class="screen active">
+    <img class="logoimg" src="icon-512.png" alt="サンポット図鑑" width="230" height="230">
+    <div class="tsub">大田区の名所を、駅ごとにチェック。<br>「行きたい」をためて、「行った」を集めて、<br>「大田区マスター度」を上げよう。</div>
+    <div>
+      <span class="pill">🚉 全駅カバー</span>
+      <span class="pill">⭐ 行きたいストック</span>
+      <span class="pill">✅ 行った記録</span>
+      <span class="pill">📷 結果カードでシェア</span>
+    </div>
+    <button class="btn" style="min-width:200px" onclick="App.start()">はじめる</button>
+    <div class="muted">※インストール不要・ログイン不要。記録はこの端末に保存されます。<br>
+    <span style="font-size:10px;opacity:.75">地図の形は国土数値情報「行政区域データ」（国土交通省）を加工して作成</span></div>
+  </section>
+
+  <!-- HUB -->
+  <section id="hub" class="screen">
+    <div class="topbar">
+      <h2 style="font-size:18px">大田区マップ</h2>
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="App.show('wish')">⭐ 行きたい<span id="wishCount"></span></button>
+      <button class="btn ghost sm" onclick="App.show('result')">🏅 マスター度</button>
+    </div>
+    <div class="prog"><i id="hubProg"></i></div>
+    <div class="muted" id="hubStat"></div>
+    <div class="maparea" id="maparea">
+      <!-- 地図の形: 国土数値情報「行政区域データ」（国土交通省）を加工して作成（簡略化） -->
+      <svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="landfill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#25375e"/>
+            <stop offset="1" stop-color="#1a2742"/>
+          </linearGradient>
+        </defs>
+        <g id="landG"></g>
+        <path class="riverline" vector-effect="non-scaling-stroke" d="M4,28 C8,36 10,44 16,53 C21,61 26,66 30,71"/>
+        <g id="railG"></g>
+        <path class="wave" vector-effect="non-scaling-stroke" d="M78,14 q3,-2.4 6,0"/>
+        <path class="wave w2" vector-effect="non-scaling-stroke" d="M87,25 q3,-2.4 6,0"/>
+        <path class="wave w3" vector-effect="non-scaling-stroke" d="M80,34 q3,-2.4 6,0"/>
+        <text class="planedeco" x="72" y="70" text-anchor="middle">✈️</text>
+      </svg>
+      <!-- station nodes injected -->
+      <button class="mapcallout" id="mapCallout"></button>
+    </div>
+    <div class="muted">ピンをタップすると駅名が出ます。駅名をもう一度タップでスポット一覧へ。金色はコンプ！</div>
+    <div class="stlist" id="stList"></div>
+    <div class="footnote">スポット情報は大田区公式サイトなどの一次資料をもとに作成しています。最寄り駅・徒歩時間は目安です。</div>
+  </section>
+
+  <!-- STATION -->
+  <section id="station" class="screen">
+    <div class="topbar">
+      <button class="btn ghost sm" onclick="App.show('hub')">‹ マップ</button>
+      <h2 id="stName" style="font-size:17px"></h2>
+      <div class="grow"></div>
+      <span class="stinfo" id="stLines"></span>
+    </div>
+    <div class="spotlist" id="spotList"></div>
+  </section>
+
+  <!-- WISH LIST -->
+  <section id="wish" class="screen">
+    <div class="topbar">
+      <button class="btn ghost sm" onclick="App.show('hub')">‹ マップ</button>
+      <h2 style="font-size:18px">⭐ 行きたいリスト</h2>
+    </div>
+    <div id="wishBody"></div>
+  </section>
+
+  <!-- RESULT -->
+  <section id="result" class="screen">
+    <div class="topbar">
+      <button class="btn ghost sm" onclick="App.show('hub')">‹ マップ</button>
+      <h2 style="font-size:18px">大田区マスター度</h2>
+    </div>
+    <canvas id="resultCanvas" width="760" height="760"></canvas>
+    <div class="rowbtns">
+      <button class="btn" onclick="App.saveImage()">📷 画像を保存</button>
+      <button class="btn ghost" onclick="App.shareImage()">↗ シェア</button>
+    </div>
+    <div class="footnote">保存した画像は X / Instagram / Threads にそのまま貼れます。</div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   地図データ
+   出典: 国土数値情報「行政区域データ」（国土交通省）を加工して作成（簡略化）
+   [0]=本土（羽田空港含む） [1]以降=埋立島（平和島・京浜島・城南島など）
+   ============================================================ */
+const OTA_OUTLINE = [[[55.6,67.1],[59.2,67.1],[65.2,70.5],[69.7,73.7],[70.9,72],[72.6,70.8],[73.9,73.1],[75,72.8],[75.6,73.8],[79.5,75.2],[86.9,71],[86.7,69.9],[82.6,64.2],[74.4,50.1],[66.7,51.1],[62.9,56.7],[61.4,54.9],[60.1,54.1],[58.2,56],[57.4,55.5],[55.5,52.7],[55.7,52.2],[59,51.1],[57.8,47.5],[56.8,46.8],[55.9,47],[55.5,46.4],[56.5,45.8],[56.7,44.6],[53.7,37.3],[49.5,38.8],[48.1,38.7],[48.1,39.1],[45,39.1],[44.4,38.2],[45.2,36],[44.4,35.6],[44,34.5],[40.2,34.6],[39.8,35.8],[39.2,36.2],[38.3,33.3],[36.8,32.5],[36.7,30.9],[29.6,29.9],[28,28.5],[25.7,24.8],[24.2,23.6],[21.6,23.2],[20.6,22.2],[20.9,27.4],[19.5,27],[19.1,27.9],[18.6,28],[18.7,34.2],[16.1,36.2],[12.9,31.4],[12.4,32],[11.4,31.6],[11.4,31.1],[10.4,31.5],[10.1,31.1],[9.2,31.9],[7.6,30.9],[6.4,31.5],[5.5,33.2],[4.4,32.6],[4,33.5],[4.6,34.2],[6.8,35.1],[6.2,35.2],[5.2,37.3],[7.1,37.8],[9.8,37.5],[12.4,40.3],[16.2,52.5],[17.7,55],[23.5,58.8],[28.1,59.6],[31,61.8],[31.2,62.8],[30.9,63.9],[27.9,67],[27.9,69.1],[29.4,71.5],[31.5,72.5],[34.4,72.4],[38.7,71.2],[40.9,69.1],[43.1,67.7],[45.1,68.2],[46.9,69.5],[47.4,69.4],[48.9,67.3],[49.9,66.7],[53.9,67.6],[55.6,67.1]],[[73.2,41.7],[72.5,41],[73.7,40],[72.3,41],[70.4,39.2],[70.8,39.7],[70,40.5],[69.6,40.1],[69.2,40.6],[67.7,39],[65.7,41.3],[69.8,37.2],[67.9,33.6],[64.5,35.7],[63.8,34.5],[62.3,34.4],[62.3,40.7],[58.8,40.7],[58.8,37.9],[55.3,38.1],[57.7,45],[58.7,45.8],[62.2,45.8],[65.1,42.9],[65.7,43.9],[66.4,43.2],[64.4,44.9],[64.4,45.8],[74.2,45.7],[75.5,43.9],[73.2,41.7]],[[60,51.3],[63.9,53.8],[68.2,47.5],[63.1,47.1],[62.9,47.6],[59.6,47.5],[59.4,49.5],[60,51.3]],[[86.1,76],[88,77.8],[96,69],[94.4,67.6],[92.7,68.5],[86.1,76]]];
+
+/* ============================================================
+   路線と駅（駅座標は各駅の緯度経度を実形マップと同じ投影で%化）
+   ============================================================ */
+const LINES = [
+  { name:"JR京浜東北線",        color:"#00B2E5", st:["omori","kamata"] },
+  { name:"東急池上線",          color:"#EE86A7", st:["nagahara","senzokuike","ishikawadai","yukigaya","ontakesan","kugahara","chidoricho","ikegami","hasunuma","kamata"] },
+  { name:"東急多摩川線",        color:"#AE0378", st:["tamagawa","numabe","unoki","shimomaruko","musashinitta","yaguchiwatashi","kamata"] },
+  { name:"東急目黒線・東横線ほか", color:"#009CD2", st:["denenchofu","tamagawa","ookayama","kitasenzoku"] },
+  { name:"都営浅草線",          color:"#EC6E65", st:["nishimagome","magome"] },
+  { name:"京急本線",            color:"#E8334A", st:["heiwajima","omorimachi","umeyashiki","keikyukamata","zoshiki","rokugodote"] },
+  { name:"京急空港線",          color:"#E8334A", st:["keikyukamata","kojiya","otorii","anamoriinari","tenkubashi","haneda_t3","haneda_t12"] },
+  { name:"東京モノレール",      color:"#F5A200", st:["ryutsu","showajima","seibijo","tenkubashi","haneda_t3","haneda_t12"] },
+];
+
+/* スポット: idはv1互換（既存）＋新規はst_接頭辞。rarityはおすすめ度として表示 */
+const STATIONS = [
+  { id:"omori", name:"大森", pos:[43.9,38.5], spots:[
+      {id:"omori_0", name:"大森貝塚", rarity:"SR", icon:"🐚", trivia:"日本考古学発祥の地とされる遺跡。"},
+      {id:"magome_1", name:"山王の高台", rarity:"R", icon:"🏘️", trivia:"坂の多い閑静な高台の住宅地。"},
+      {id:"magome_5", name:"山王草堂記念館", rarity:"R", icon:"📜", trivia:"言論人、徳富蘇峰の旧居を保存。自筆原稿も見られる。"},
+      {id:"st_omori_1", name:"八景坂", rarity:"R", icon:"🌄", trivia:"房総まで一望と言われた名坂。義家の鎧掛松伝説が残る。", walk:1},
+      {id:"st2_omori_0", name:"鐵道院鉄柱", rarity:"N", icon:"🛤️", trivia:"明治45年鋳造「鐵道院」の銘が残る鉄柱。駅前広場に現存。", walk:1},
+      {id:"st2_omori_1", name:"八景園跡", rarity:"R", icon:"🎡", trivia:"明治17年開園、皇后も訪れた郊外随一の遊園地の跡。", walk:5},
+      {id:"st2_omori_2", name:"大森射的場跡", rarity:"N", icon:"🎯", trivia:"明治22年から昭和12年頃まで使われた射的場。碑が残る。", walk:10},
+      {id:"st2_omori_3", name:"善慶寺（義民六人衆の墓）", rarity:"R", icon:"🙏", trivia:"新井宿義民六人衆を祀る霊廟。寺は1291年創建と伝わる。", walk:12},
+      {id:"st2_omori_4", name:"闇坂", rarity:"N", icon:"🌳", trivia:"木々が茂り昼でも暗かったのが名の由来と伝わる山王の坂。", walk:7},
+      {id:"st2_omori_5", name:"蘇峰公園", rarity:"N", icon:"🍂", trivia:"徳富蘇峰の居宅跡の庭園。入口の2本のイチョウが目印。", walk:15},
+      {id:"st2_omori_6", name:"尾崎士郎記念館", rarity:"R", icon:"📚", trivia:"酒と相撲を愛した作家、尾崎士郎の書斎を庭から見学できる。", walk:10},
+      {id:"st2_omori_7", name:"馬込文士村資料展示室", rarity:"N", icon:"📜", trivia:"山王会館内。文士村の作家や芸術家の資料を無料で展示。", walk:15},
+      {id:"st2_omori_8", name:"大田文化の森", rarity:"N", icon:"🎭", trivia:"ホールに創作工房、図書の情報館も備えた文化活動の拠点。", walk:20},
+    ]},
+  { id:"kamata", name:"蒲田", pos:[37.5,55.4], spots:[
+      {id:"kamata_1", name:"黒湯の銭湯", rarity:"R", icon:"♨️", trivia:"太古の植物由来という黒い温泉。区の名物。"},
+      {id:"kamata_2", name:"羽根つき餃子", rarity:"R", icon:"🥟", trivia:"パリッと羽のついた餃子で知られる街。"},
+      {id:"kamata_3", name:"松竹蒲田撮影所跡", rarity:"SR", icon:"🎬", trivia:"「流行は蒲田から」。日本映画の都だった撮影所跡。"},
+      {id:"st_kamata_1", name:"大田区民ホール・アプリコ", rarity:"N", icon:"🎵", trivia:"コンサートが開かれる区民ホール。地下に大ホール。", walk:3},
+      {id:"st2_kamata_0", name:"蒲田西口商店街", rarity:"N", icon:"🌅", trivia:"戦後のヤミ市から復興。2本のアーケードが続く西口の顔。", walk:1},
+      {id:"st2_kamata_1", name:"日本舶用ディーゼル機関発祥の地", rarity:"N", icon:"⚙️", trivia:"大正時代の新潟鉄工所蒲田工場で国産ディーゼルが誕生。", walk:10},
+    ]},
+  { id:"nagahara", name:"長原", pos:[28.7,28.6], spots:[
+      {id:"st_nagahara_0", name:"小池公園", rarity:"N", icon:"🦆", trivia:"洗足池が大池、ここは小池。カワセミも来る水辺の公園。", walk:4},
+      {id:"st_nagahara_1", name:"上池台射水坂公園", rarity:"N", icon:"🌸", trivia:"射水坂の名がつく上下二段の公園。春は桜が見事。", walk:11},
+    ]},
+  { id:"senzokuike", name:"洗足池", pos:[26.7,29.8], spots:[
+      {id:"senzoku_0", name:"洗足池", rarity:"SR", icon:"🦢", trivia:"湧水の池。ボートと桜、水鳥の名所。"},
+      {id:"senzoku_1", name:"勝海舟夫妻墓", rarity:"R", icon:"⚓", trivia:"幕末の偉人、勝海舟夫妻が池畔に眠る墓。区指定文化財。"},
+      {id:"senzoku_2", name:"千束八幡神社", rarity:"R", icon:"⛩️", trivia:"池のほとりに鎮座する古社。"},
+      {id:"senzoku_3", name:"池月橋", rarity:"N", icon:"🌉", trivia:"全国でも珍しい木の三連太鼓橋。撮影の定番。"},
+      {id:"senzoku_4", name:"大田区立勝海舟記念館", rarity:"SR", icon:"🏛️", trivia:"国登録有形文化財の旧清明文庫を生かした記念館。"},
+      {id:"senzoku_5", name:"袈裟掛けの松", rarity:"R", icon:"🌲", trivia:"日蓮が袈裟を掛けたと伝わる松。洗足池の名の由来。"},
+      {id:"st_senzokuike_1", name:"洗足池図書館", rarity:"N", icon:"📚", trivia:"勝海舟コーナーがある池のほとりの区立図書館。", walk:3},
+      {id:"st2_senzokuike_0", name:"西郷南洲留魂詩碑", rarity:"R", icon:"📜", trivia:"明治12年、勝海舟が盟友、西郷隆盛を偲んで建てた詩碑。", walk:10},
+    ]},
+  { id:"ishikawadai", name:"石川台", pos:[25.2,32.3], spots:[
+      {id:"st_ishikawadai_0", name:"雪ヶ谷八幡神社", rarity:"R", icon:"⛩️", trivia:"横綱大鵬が奉納した「出世石」がある創建約450年の神社。", walk:2},
+      {id:"kamata_5", name:"呑川緑道", rarity:"N", icon:"🏞️", trivia:"目黒区境から河口まで約9キロ続く川沿いの散策路。"},
+      {id:"st_ishikawadai_1", name:"石川神社", rarity:"R", icon:"🥢", trivia:"御神箸で食べると歯痛が治まると伝わる村の鎮守。", walk:10},
+      {id:"st_ishikawadai_2", name:"石橋供養塔", rarity:"R", icon:"🪨", trivia:"交通安全だけを祈った珍しい安永3年の供養塔。", walk:10},
+    ]},
+  { id:"yukigaya", name:"雪が谷大塚", pos:[25.1,35.8], spots:[
+      {id:"st_yukigaya_0", name:"鵜木大塚古墳", rarity:"SR", icon:"🗿", trivia:"荏原古墳群でいちばん東の古墳。上には稲荷神社が建つ。", walk:10},
+    ]},
+  { id:"ontakesan", name:"御嶽山", pos:[25.5,40.4], spots:[
+      {id:"st_ontakesan_0", name:"御嶽神社", rarity:"R", icon:"⛰️", trivia:"三度詣れば木曽御嶽山一度分と言われた関東の霊場。", walk:1},
+      {id:"st_ontakesan_1", name:"東調布公園", rarity:"N", icon:"🏊", trivia:"流れる川にプール、児童交通公園まである大きな区立公園。", walk:8},
+    ]},
+  { id:"kugahara", name:"久が原", pos:[26.3,43.7], spots:[
+      {id:"st_kugahara_0", name:"昭和のくらし博物館", rarity:"SR", icon:"🏠", trivia:"昭和26年築の家を家具ごとまるごと保存した博物館。", walk:8},
+      {id:"st_kugahara_1", name:"久が原東部八幡神社", rarity:"R", icon:"⛩️", trivia:"文久2年建立の拝殿が残る区指定文化財の神社。"},
+      {id:"st_kugahara_2", name:"久が原西部八幡神社", rarity:"R", icon:"⛩️", trivia:"東部八幡神社と対をなす、旧久が原村西側の鎮守。", walk:13},
+      {id:"st_kugahara_3", name:"千鳥窪貝塚", rarity:"SR", icon:"🐚", trivia:"鳥形の角器を抱いた縄文人骨が出土した貝塚。"},
+    ]},
+  { id:"chidoricho", name:"千鳥町", pos:[27.5,47.5], spots:[
+      {id:"st_chidoricho_0", name:"千鳥いこい公園", rarity:"N", icon:"🦉", trivia:"タヌキとフクロウの置物が地中パイプでつながる公園。", walk:3},
+      {id:"st_chidoricho_1", name:"くさっぱら公園", rarity:"R", icon:"🟤", trivia:"土がむき出しのまま残る、泥んこで遊べる公園。", walk:4},
+      {id:"st2_chidoricho_0", name:"本光寺", rarity:"R", icon:"🪙", trivia:"池上七福神の大黒天。2020年から大黒天を祀る札所に。", walk:3},
+    ]},
+  { id:"ikegami", name:"池上", pos:[31.1,49.4], spots:[
+      {id:"ikegami_0", name:"池上本門寺", rarity:"SR", icon:"🛕", trivia:"日蓮宗の大本山。関東最古級の五重塔。"},
+      {id:"ikegami_1", name:"池上のくず餅", rarity:"R", icon:"🍡", trivia:"門前名物の発酵和菓子。参道の味。"},
+      {id:"ikegami_2", name:"池上梅園", rarity:"R", icon:"🌸", trivia:"斜面に広がる梅の名園。早春の名所。"},
+      {id:"ikegami_4", name:"此経難持坂", rarity:"R", icon:"🪜", trivia:"加藤清正が寄進と伝わる96段の石段参道。"},
+      {id:"ikegami_5", name:"本門寺公園", rarity:"N", icon:"🌳", trivia:"弁天池やデイキャンプ場がある本門寺となりの公園。"},
+      {id:"st_ikegami_1", name:"大坊本行寺", rarity:"SR", icon:"🛕", trivia:"日蓮聖人入滅の地。ご臨終の間は都指定の史跡。"},
+      {id:"st_ikegami_2", name:"万両塚（永寿院）", rarity:"R", icon:"🪦", trivia:"紀州徳川家の姫、芳心院が眠る江戸期の墓所。", walk:10},
+      {id:"st_ikegami_3", name:"池上会館の屋上展望台", rarity:"R", icon:"🌇", trivia:"本門寺に隣接。屋上に展望台と庭園がある区の施設。", walk:10},
+      {id:"st2_ikegami_0", name:"曹禅寺", rarity:"R", icon:"😄", trivia:"池上七福神の布袋尊を祀る曹洞宗の寺。笑門来福の神。", walk:5},
+      {id:"st2_ikegami_1", name:"微妙庵", rarity:"R", icon:"⚔️", trivia:"池上七福神の毘沙門天。威光と財宝授与の武神。", walk:8},
+      {id:"st2_ikegami_2", name:"厳定院", rarity:"R", icon:"🎵", trivia:"池上七福神の弁財天。七福神で唯一の女神を祀る。", walk:14},
+      {id:"st2_ikegami_3", name:"妙見堂", rarity:"R", icon:"⭐", trivia:"池上七福神の寿老人。照栄院の妙見堂に祀られる。", walk:9},
+      {id:"st2_ikegami_4", name:"養源寺", rarity:"R", icon:"🎣", trivia:"池上七福神の恵比寿。七福神で唯一の日本生まれの神。", walk:10},
+      {id:"st2_ikegami_5", name:"本成院", rarity:"R", icon:"🧓", trivia:"池上七福神の福禄寿。幸福と俸禄と長寿を授ける神。", walk:9},
+      {id:"st2_ikegami_6", name:"明治8年の町屋建築", rarity:"N", icon:"🏠", trivia:"明治8年築の商家。茶屋だった頃の姿を今に伝える。", walk:10},
+      {id:"st2_ikegami_7", name:"観音堂（観音通り）", rarity:"N", icon:"🕊️", trivia:"戦没者を悼み昭和23年建立。商店街の五辻に立つ藤棚のお堂。", walk:20},
+    ]},
+  { id:"hasunuma", name:"蓮沼", pos:[34.2,54.6], spots:[
+      {id:"st_hasunuma_0", name:"御園神社", rarity:"R", icon:"⛩️", trivia:"多摩川の洪水で流れ着いた猿田彦命を祀ると伝わる。", walk:4},
+      {id:"st_hasunuma_1", name:"女塚神社", rarity:"R", icon:"⛩️", trivia:"新田義興の危機を知らせた侍女、少将局ゆかりの社。"},
+    ]},
+  { id:"tamagawa", name:"多摩川", pos:[11.9,37.3], spots:[
+      {id:"tamagawa_4", name:"多摩川浅間神社", rarity:"SR", icon:"⛩️", trivia:"約800年前の創建と伝わる、北条政子ゆかりの古社。"},
+      {id:"tamagawa_0", name:"多摩川台古墳群", rarity:"SR", icon:"⛰️", trivia:"台地の上に古墳が連なる歴史スポット。"},
+      {id:"tamagawa_5", name:"亀甲山古墳", rarity:"R", icon:"🐢", trivia:"全長107メートル、多摩川流域最大の前方後円墳。"},
+      {id:"denenchofu_3", name:"せせらぎ公園", rarity:"N", icon:"💧", trivia:"湧水池が残る緑地。遊園地「多摩川園」の跡地。"},
+      {id:"st_tamagawa_1", name:"多摩川台公園", rarity:"R", icon:"🌳", trivia:"多摩川沿い約750mの丘。見晴台とあじさい園が名物。", walk:1},
+      {id:"st2_tamagawa_0", name:"多摩川台公園古墳展示室", rarity:"R", icon:"🏺", trivia:"前方後円墳の石室を再現。勾玉や埴輪のレプリカを展示。", walk:5},
+      {id:"st2_tamagawa_1", name:"宝萊山古墳", rarity:"SR", icon:"⛰️", trivia:"4世紀築造、多摩川流域最古級の前方後円墳。全長約97m。", walk:15},
+      {id:"st2_tamagawa_2", name:"多摩川治水記念碑", rarity:"N", icon:"🗿", trivia:"大正7年着工の多摩川改修工事を記念し昭和11年建立。", walk:3},
+    ]},
+  { id:"numabe", name:"沼部", pos:[15.1,40.9], spots:[
+      {id:"denenchofu_5", name:"桜坂", rarity:"R", icon:"🌸", trivia:"かつて沼部の大坂と呼ばれた旧中原街道の坂。桜の名所。"},
+      {id:"tamagawa_1", name:"丸子の渡し跡", rarity:"R", icon:"🚣", trivia:"かつて対岸を結んだ渡し場の跡。"},
+      {id:"denenchofu_4", name:"旧六郷用水散策路", rarity:"N", icon:"💧", trivia:"江戸時代に開かれた用水路の跡。復元水路を歩ける。"},
+      {id:"st_numabe_1", name:"密蔵院の庚申塔", rarity:"SR", icon:"🗿", trivia:"寛文元年建立。区内で最も古い庚申供養塔。", walk:3},
+      {id:"st2_numabe_0", name:"丸子橋", rarity:"R", icon:"🌉", trivia:"昭和10年完成。東京と神奈川が費用を分け合った多摩川の橋。", walk:7},
+    ]},
+  { id:"unoki", name:"鵜の木", pos:[18.1,46.1], spots:[
+      {id:"st_unoki_0", name:"鵜の木松山公園", rarity:"SR", icon:"🏺", trivia:"古墳時代末から奈良時代の横穴墓を保存公開する公園。", walk:3},
+      {id:"st_unoki_1", name:"増明院", rarity:"N", icon:"🌸", trivia:"寛永2年開創の真言宗の寺。山門と本堂近くの桜が見事。", walk:5},
+    ]},
+  { id:"shimomaruko", name:"下丸子", pos:[21.1,49.3], spots:[
+      {id:"nitta_5", name:"下丸子公園", rarity:"N", icon:"⛲", trivia:"園内の水の流れの名は「矢口の渡し」。夏は水遊びも。"},
+      {id:"tamagawa_2", name:"ガス橋", rarity:"R", icon:"🌉", trivia:"多摩川に架かる橋。名の由来は導管。"},
+      {id:"st_shimomaruko_1", name:"光明寺", rarity:"SR", icon:"🛕", trivia:"行基が開いたと伝わる古刹。四天王像は都指定文化財。", walk:5},
+      {id:"st_shimomaruko_2", name:"六所神社", rarity:"N", icon:"⛩️", trivia:"大己貴命と伊邪那岐命を祀る。例祭は8月15日。", walk:3},
+      {id:"st2_shimomaruko_0", name:"蓮光院武家屋敷門", rarity:"SR", icon:"🏯", trivia:"江戸末期の大名屋敷門を移築した寺の山門。都指定文化財。", walk:5},
+      {id:"st2_shimomaruko_1", name:"大田区民プラザ", rarity:"N", icon:"🎭", trivia:"大小ホールに茶室や音楽スタジオも備える駅前の文化拠点。", walk:1},
+      {id:"st2_shimomaruko_2", name:"道祖神（おしゃもじさま）", rarity:"R", icon:"🥄", trivia:"風邪が治るとしゃもじを奉納した道端の神様。旅人も守る。", walk:15},
+    ]},
+  { id:"musashinitta", name:"武蔵新田", pos:[24.7,52.7], spots:[
+      {id:"nitta_0", name:"新田神社", rarity:"SR", icon:"🏹", trivia:"破魔矢発祥の伝説が伝わる古社。"},
+      {id:"nitta_1", name:"武蔵新田商店街", rarity:"R", icon:"🏮", trivia:"門前に続く下町情緒の商店街。"},
+      {id:"nitta_4", name:"十寄神社", rarity:"R", icon:"🛡️", trivia:"新田義興の十人の従者を祀る。多摩川七福神の毘沙門天。"},
+      {id:"nitta_3", name:"頓兵衛地蔵", rarity:"N", icon:"🗿", trivia:"伝説にちなむ地蔵。物語が残る。"},
+      {id:"st_musashinitta_1", name:"氷川神社（矢口）", rarity:"N", icon:"⛩️", trivia:"素戔嗚尊を祀る。多摩川七福神巡りコースの一社。"},
+      {id:"st_musashinitta_2", name:"東八幡神社", rarity:"N", icon:"🏹", trivia:"多摩川七福神の巡拝社。例祭は8月第1土曜・日曜。", walk:10},
+      {id:"st2_musashinitta_0", name:"矢口中稲荷神社", rarity:"N", icon:"⛩️", trivia:"多摩川七福神の福禄寿。駅のホーム脇に鎮座する小社。", walk:3},
+    ]},
+  { id:"yaguchiwatashi", name:"矢口渡", pos:[28.3,55.5], spots:[
+      {id:"nitta_2", name:"矢口の渡し", rarity:"R", icon:"🚣", trivia:"多摩川の古い渡し場。史話の舞台。"},
+      {id:"st_yaguchi_1", name:"多摩川大橋", rarity:"R", icon:"🌉", trivia:"昭和24年完成。矢口の渡しに代わり対岸を結んだ橋。"},
+      {id:"st2_yaguchi_0", name:"延命寺", rarity:"R", icon:"🙏", trivia:"多摩川七福神の寿老人。七社寺で唯一の寺院。", walk:7},
+      {id:"st2_yaguchi_1", name:"原村梅林跡", rarity:"N", icon:"🌸", trivia:"明治16年に梅300本を植えた梅の名所の跡。石碑が残る。", walk:15},
+    ]},
+  { id:"denenchofu", name:"田園調布", pos:[11.7,32], spots:[
+      {id:"denenchofu_0", name:"田園調布駅舎", rarity:"SR", icon:"🚉", trivia:"大正期の洋風駅舎を復元。放射状街路の起点。"},
+      {id:"denenchofu_1", name:"イチョウ並木", rarity:"R", icon:"🍂", trivia:"駅前から扇状に伸びる並木。秋は黄金色に。"},
+      {id:"denenchofu_2", name:"宝来公園", rarity:"R", icon:"🌲", trivia:"武蔵野の面影を残す池のある公園。"},
+    ]},
+  { id:"ookayama", name:"大岡山", pos:[21.4,26.1], spots:[
+      {id:"st_ookayama_0", name:"東京科学大学 大岡山キャンパス", rarity:"R", icon:"🌸", trivia:"春には本館前の桜並木を一般開放する国立大学の丘。", walk:3},
+    ]},
+  { id:"kitasenzoku", name:"北千束", pos:[24.7,23.5], spots:[
+      {id:"st_kitasenzoku_0", name:"清水窪弁財天", rarity:"SR", icon:"💧", trivia:"洗足池の水源。東京の名湧水57選に選ばれた湧き水。"},
+      {id:"st_kitasenzoku_1", name:"桜のプロムナード", rarity:"N", icon:"🌸", trivia:"北千束から大森東へ約12キロ続く桜と水の散策路。"},
+    ]},
+  { id:"nishimagome", name:"西馬込", pos:[32.1,39.5], spots:[
+      {id:"magome_4", name:"大田区立郷土博物館", rarity:"R", icon:"🏺", trivia:"馬込文士村の資料も揃う、入館無料の区立博物館。"},
+      {id:"st_nishimagome_1", name:"熊谷恒子記念館", rarity:"R", icon:"🖌️", trivia:"美智子さまにかなを進講した書家の旧居美術館。", walk:10},
+      {id:"st2_nishimagome_0", name:"龍子記念館", rarity:"SR", icon:"🎨", trivia:"巨匠、川端龍子が自ら設計。建物はタツノオトシゴの形。", walk:15},
+      {id:"st2_nishimagome_1", name:"龍子公園", rarity:"R", icon:"🖼️", trivia:"川端龍子の旧宅と画室、庭園を無料で公開。", walk:15},
+      {id:"st2_nishimagome_2", name:"長遠寺", rarity:"R", icon:"🛕", trivia:"別名は馬込不動。1108年開創と伝わる真言宗の古寺。", walk:8},
+      {id:"st2_nishimagome_3", name:"馬込給水塔", rarity:"R", icon:"🗼", trivia:"高さ28m、直径32mの双子の塔。昭和26年と29年完成。", walk:8},
+      {id:"st2_nishimagome_4", name:"富士見橋", rarity:"N", icon:"🗻", trivia:"新幹線の上に架かる橋。晴れた日は列車の向こうに富士山。", walk:12},
+      {id:"st2_nishimagome_5", name:"磨墨塚", rarity:"R", icon:"🐴", trivia:"宇治川の合戦で活躍した名馬、磨墨ゆかりの塚。", walk:12},
+      {id:"st2_nishimagome_6", name:"臼田坂", rarity:"N", icon:"⛰️", trivia:"臼田姓の家が多かったのが名の由来。馬込文士村ゆかりの坂。", walk:12},
+      {id:"st2_nishimagome_7", name:"おいはぎ坂", rarity:"N", icon:"🌲", trivia:"旅人が追いはぎに襲われた伝承が名に残る細い曲がり坂。", walk:10},
+      {id:"st2_nishimagome_8", name:"佐伯山緑地", rarity:"N", icon:"🌿", trivia:"高低差を生かし上段に散策路、下段に複合遊具のある緑地。", walk:20},
+    ]},
+  { id:"magome", name:"馬込", pos:[36.1,33.1], spots:[
+      {id:"magome_0", name:"馬込文士村", rarity:"SR", icon:"✒️", trivia:"多くの文学者・芸術家が集い住んだ丘。"},
+      {id:"magome_2", name:"萬福寺", rarity:"R", icon:"🛕", trivia:"開基は鎌倉武士の梶原景時と伝わる古刹。"},
+      {id:"st_magome_1", name:"馬込八幡神社", rarity:"R", icon:"⛩️", trivia:"鎌倉時代創建と伝わる旧馬込村の総鎮守。"},
+      {id:"st2_magome_0", name:"松原橋", rarity:"SR", icon:"🛣️", trivia:"昭和15年完成、日本初の道路立体交差。環七が第二京浜を跨ぐ。", walk:1},
+    ]},
+  { id:"heiwajima", name:"平和島", pos:[47.6,44.6], spots:[
+      {id:"omori_4", name:"磐井神社", rarity:"R", icon:"⛩️", trivia:"創建573年と伝わる古社。平安の書「延喜式」にも登場。"},
+      {id:"omori_1", name:"大森 海苔のふるさと館", rarity:"R", icon:"🍙", trivia:"大森は江戸前海苔づくりの中心地だった。"},
+      {id:"omori_2", name:"平和島", rarity:"N", icon:"🌊", trivia:"埋立地に広がるレジャーと物流の島。"},
+      {id:"st_heiwajima_1", name:"平和の森公園フィールドアスレチック", rarity:"R", icon:"🧗", trivia:"区の文化財や史跡がモチーフの40種目アスレチック。", walk:10},
+      {id:"st2_heiwajima_0", name:"旧東海道 美原通り", rarity:"SR", icon:"🛤️", trivia:"第一京浜の建設時に拡幅を免れ、旧東海道の面影を残す道。", walk:5},
+      {id:"st2_heiwajima_1", name:"平和の森公園", rarity:"R", icon:"🌳", trivia:"アーチェリー場や相撲場も備える区内最大級の公園。", walk:10},
+      {id:"st2_heiwajima_2", name:"大森スポーツセンター", rarity:"N", icon:"🏀", trivia:"アリーナと小ホールを備え、柔道から集会まで使える拠点。", walk:6},
+    ]},
+  { id:"omorimachi", name:"大森町", pos:[45.9,49], spots:[
+      {id:"omori_5", name:"大森ふるさとの浜辺公園", rarity:"SR", icon:"🏖️", trivia:"砂浜と干潟を持つ、都内初の区立海浜公園。"},
+      {id:"st_omorimachi_1", name:"大森貴舩神社", rarity:"R", icon:"⛩️", trivia:"水を司る龍神、高龗神をまつる地域の水の守り神。", walk:10},
+      {id:"st2_omorimachi_0", name:"厳正寺（水止舞）", rarity:"SR", icon:"💦", trivia:"雨を止める祈りが起源の水止舞は都の無形文化財。7月開催。", walk:12},
+      {id:"st2_omorimachi_1", name:"大森西交通公園", rarity:"N", icon:"🚲", trivia:"ゴーカートや子ども自転車を無料で借りて走れる交通公園。", walk:7},
+      {id:"st2_omorimachi_2", name:"貴船堀緑地", rarity:"N", icon:"🚤", trivia:"漁業の堀を埋め立てた南北500mの緑地。河口に漁船が並ぶ。", walk:15},
+      {id:"st2_omorimachi_3", name:"森ケ崎公園", rarity:"R", icon:"🗻", trivia:"水再生センター屋上の公園。展望広場から富士山と羽田空港。", walk:25},
+    ]},
+  { id:"umeyashiki", name:"梅屋敷", pos:[44.3,52.6], spots:[
+      {id:"st_umeyashiki_0", name:"聖蹟蒲田梅屋敷公園", rarity:"R", icon:"🌸", trivia:"明治天皇が5度も訪れた梅の名所。梅は約100本。", walk:5},
+      {id:"st_umeyashiki_1", name:"ぷらもーる梅屋敷商店街", rarity:"N", icon:"🛍️", trivia:"全長555mに約140店。名は梅のプラムから公募で誕生。", walk:2},
+      {id:"st2_umeyashiki_0", name:"旧呑川緑地", rarity:"N", icon:"🌸", trivia:"埋め立てた旧呑川の川筋約1.7kmが桜並木の緑地に。", walk:9},
+      {id:"st2_umeyashiki_1", name:"大田区総合体育館", rarity:"R", icon:"🏟️", trivia:"約4千席のアリーナを持つ、区内スポーツの中心地。", walk:5},
+    ]},
+  { id:"keikyukamata", name:"京急蒲田", pos:[41.7,56.5], spots:[
+      {id:"kamata_4", name:"蒲田八幡神社", rarity:"R", icon:"⛩️", trivia:"創建は慶長五年と推定。境内に小円墳があった古社。"},
+      {id:"st_keikyukamata_1", name:"夫婦橋親水公園", rarity:"N", icon:"⛲", trivia:"呑川の水辺に親しめる公園。災害時は船の物資拠点に。", walk:3},
+      {id:"st2_keikyukamata_0", name:"大田区産業プラザPiO", rarity:"R", icon:"🏢", trivia:"ものづくりのまち大田の産業支援拠点。展示会やイベントも。", walk:3},
+      {id:"st2_keikyukamata_1", name:"椿神社", rarity:"R", icon:"🌺", trivia:"麻糸を首に巻いて風邪や喉の病の平癒を祈った民間信仰の社。", walk:10},
+    ]},
+  { id:"zoshiki", name:"雑色", pos:[37,63.7], spots:[
+      {id:"st_zoshiki_0", name:"西六郷公園（タイヤ公園）", rarity:"SR", icon:"🦖", trivia:"古タイヤの大怪獣は高さ8メートル、しっぽまで20メートル。", walk:10},
+      {id:"st_zoshiki_1", name:"雑色商店街", rarity:"N", icon:"🏮", trivia:"大田区最大級の店舗数。焼き鳥店が連なる通りも名物。", walk:1},
+      {id:"st_zoshiki_2", name:"六郷水門", rarity:"SR", icon:"🌊", trivia:"昭和6年完成。高欄に旧六郷町の町章が残る土木遺産。", walk:15},
+      {id:"st2_zoshiki_0", name:"宝幢院", rarity:"R", icon:"🔔", trivia:"区内最古級の梵鐘が残る、平安末期開基と伝わる寺。", walk:10},
+      {id:"st2_zoshiki_1", name:"七辻", rarity:"R", icon:"🔀", trivia:"7本の道が一点に集まる珍しい交差点。譲り合いの名所。", walk:9},
+    ]},
+  { id:"rokugodote", name:"六郷土手", pos:[33.1,70.4], spots:[
+      {id:"tamagawa_3", name:"多摩川河川敷", rarity:"N", icon:"🌾", trivia:"広々とした土手。散歩とスポーツの場。"},
+      {id:"st_rokugodote_0", name:"北野神社（止め天神）", rarity:"SR", icon:"🐴", trivia:"落馬止めが「落ちない」に通じ受験生に人気。", walk:2},
+      {id:"st_rokugodote_1", name:"六郷神社", rarity:"R", icon:"⛩️", trivia:"1057年に源頼義・義家が創建。狛犬は区内最古。", walk:5},
+      {id:"st_rokugodote_2", name:"宮本台緑地", rarity:"R", icon:"🏛️", trivia:"旧六郷橋の親柱と橋門を移設。公園のシンボルに。", walk:2},
+      {id:"st2_rokugodote_0", name:"六郷の渡し跡", rarity:"R", icon:"⛵", trivia:"洪水で橋が流され、明治まで渡し船が東海道を結んだ跡。", walk:10},
+      {id:"st2_rokugodote_1", name:"六郷橋緑地", rarity:"N", icon:"🏞️", trivia:"六郷橋から水門まで広がる河川敷。野球場とアシ原の野鳥。", walk:5},
+    ]},
+  { id:"kojiya", name:"糀谷", pos:[47.4,58.1], spots:[
+      {id:"st_kojiya_0", name:"天祖神社（糀谷）", rarity:"N", icon:"⛩️", trivia:"天照大御神を祀る糀谷の鎮守。例祭は9月第1土日。", walk:2},
+      {id:"st_kojiya_1", name:"東糀谷防災公園", rarity:"N", icon:"⛺", trivia:"大田区で最初の防災公園。夏は石組みのせせらぎで水遊びも。", walk:15},
+      {id:"st2_kojiya_0", name:"糀谷商店街", rarity:"N", icon:"🏮", trivia:"夏の阿波踊りが名物。毎月第4金土は糀谷市でにぎわう。", walk:1},
+      {id:"st2_kojiya_1", name:"子安八幡神社（北糀谷）", rarity:"R", icon:"⛩️", trivia:"安永3年奉納、大田区内最古の石鳥居が社頭に立つ。", walk:13},
+      {id:"st2_kojiya_2", name:"東官守稲荷神社", rarity:"N", icon:"⛩️", trivia:"羽田七福いなりの一社。身体安全と海上守護の歴史。", walk:6},
+      {id:"st2_kojiya_3", name:"妙法稲荷神社", rarity:"N", icon:"🐍", trivia:"白蛇伝説で蛇稲荷とも呼ばれる。羽田七福いなりの一社。", walk:10},
+    ]},
+  { id:"otorii", name:"大鳥居", pos:[52.4,59.9], spots:[
+      {id:"haneda_4", name:"羽田神社", rarity:"SR", icon:"🗻", trivia:"境内に明治初めに築かれた富士塚「羽田富士」が残る。", walk:5},
+      {id:"st_otorii_0", name:"萩中公園", rarity:"R", icon:"🚂", trivia:"本物の蒸気機関車や都電で遊べるガラクタ公園。", walk:6},
+      {id:"st2_otorii_0", name:"重幸稲荷神社", rarity:"N", icon:"⛩️", trivia:"洪水守護と五穀豊穣を願い建立。羽田七福いなりの一社。", walk:6},
+      {id:"st2_otorii_1", name:"大師橋", rarity:"N", icon:"🌁", trivia:"昭和14年架設。京浜工業地帯を結び、下流に渡し跡。", walk:18},
+    ]},
+  { id:"anamoriinari", name:"穴守稲荷", pos:[56.3,62.6], spots:[
+      {id:"haneda_2", name:"穴守稲荷神社", rarity:"R", icon:"🦊", trivia:"羽田を見守る朱鳥居の稲荷。"},
+      {id:"st_anamori_1", name:"白魚稲荷神社", rarity:"R", icon:"🐟", trivia:"漁師町羽田の豊漁を祈った稲荷。羽田七福いなりの一社。", walk:8},
+      {id:"st2_anamori_0", name:"高山稲荷神社", rarity:"N", icon:"📚", trivia:"飛騨高山の大工が建立と伝わる。羽田七福いなりの一社。", walk:8},
+      {id:"st2_anamori_1", name:"レンガの堤防", rarity:"R", icon:"🧱", trivia:"大正の多摩川改修工事で築かれた煉瓦造りの堤防。", walk:15},
+      {id:"st2_anamori_2", name:"羽田の渡し跡", rarity:"N", icon:"⛵", trivia:"川崎大師への参詣客を運んだ渡し。昭和14年の架橋まで活躍。", walk:15},
+    ]},
+  { id:"tenkubashi", name:"天空橋", pos:[61,63.4], spots:[
+      {id:"haneda_1", name:"羽田の大鳥居", rarity:"SR", icon:"⛩️", trivia:"空港近くに残る穴守稲荷の旧大鳥居。移設の逸話も。"},
+      {id:"haneda_3", name:"天空橋", rarity:"R", icon:"🌉", trivia:"街と空港を結ぶ海老取川の人道橋。名は公募で決定。"},
+      {id:"haneda_5", name:"ソラムナード羽田緑地", rarity:"R", icon:"🛬", trivia:"飛行機を望む展望テラスがある全長2キロの川沿い緑地。"},
+      {id:"st_tenkubashi_1", name:"五十間鼻無縁仏堂", rarity:"SR", icon:"🕯️", trivia:"多摩川河口の水難者を弔うお堂。初日の出の名所として人気。", walk:10},
+      {id:"st2_tenkubashi_0", name:"鴎稲荷神社", rarity:"N", icon:"🕊️", trivia:"漁師の祈りに鴎が舞い大漁になった伝説の残る稲荷。", walk:6},
+      {id:"st2_tenkubashi_1", name:"玉川弁財天", rarity:"N", icon:"💰", trivia:"羽田七福いなり番外。旧穴守の地に由来する弁財天。", walk:9},
+    ]},
+  { id:"haneda_t3", name:"羽田空港第3ターミナル", pos:[65.6,66.8], spots:[
+      {id:"st_hanedat3_0", name:"第3ターミナル展望デッキ", rarity:"SR", icon:"🌃", trivia:"24時間開放の展望デッキ。国際線の離着陸と夜景を間近に。"},
+    ]},
+  { id:"haneda_t12", name:"羽田空港第1・第2ターミナル", pos:[74,63.9], spots:[
+      {id:"haneda_0", name:"羽田空港", rarity:"UR", icon:"✈️", trivia:"日本の空の玄関。国内屈指の乗降客数。"},
+      {id:"st_hanedat12_0", name:"第1ターミナル展望デッキ", rarity:"R", icon:"🗻", trivia:"朝6時半から夜10時まで開放。晴れた日は富士山も見える屋上。"},
+      {id:"st_hanedat12_1", name:"第2ターミナル展望デッキ", rarity:"R", icon:"🛫", trivia:"東京湾を一望する5階デッキ。晴れればスカイツリーも見える。"},
+    ]},
+  { id:"ryutsu", name:"流通センター", pos:[56.2,45.2], spots:[
+      {id:"st_ryutsu_0", name:"大田市場", rarity:"SR", icon:"🥬", trivia:"野菜と花の取扱規模が日本一の巨大市場。見学コースあり。", walk:20},
+      {id:"st_ryutsu_1", name:"平和島公園", rarity:"R", icon:"🏕️", trivia:"キャンプ場やプールを備える公園。カリヨンの水景広場も。", walk:12},
+      {id:"st2_ryutsu_0", name:"東京港野鳥公園", rarity:"SR", icon:"🦆", trivia:"年間約200種の野鳥が集まる広大な都立公園。観察小屋も。", walk:15},
+      {id:"st2_ryutsu_1", name:"大田スタジアム", rarity:"R", icon:"⚾", trivia:"都内初の透水性人工芝を持つ公認野球場。", walk:15},
+    ]},
+  { id:"showajima", name:"昭和島", pos:[59,50.7], spots:[
+      {id:"st_showajima_0", name:"昭和島二丁目公園", rarity:"N", icon:"🎾", trivia:"フットサル場やテニスコートで遊べる島の運動公園。", walk:10},
+      {id:"st_showajima_1", name:"大森東避難橋（見晴らしばし）", rarity:"R", icon:"🌉", trivia:"愛称は見晴らしばし。バルコニーから浜辺公園を一望できる。", walk:5},
+      {id:"st2_showajima_0", name:"京浜島つばさ公園", rarity:"SR", icon:"🛬", trivia:"羽田を離着陸する飛行機を間近に見られる海辺の公園。", walk:25},
+    ]},
+  { id:"seibijo", name:"整備場", pos:[64.4,57.1], spots:[
+      {id:"st_seibijo_0", name:"青宙橋（あおぞらばし）", rarity:"R", icon:"🌉", trivia:"2025年開通の歩行者専用橋。海老取川を渡り駅と町を直結。", walk:2},
+    ]},
+  /* 新整備場駅は徒歩圏に公共スポットが存在しないため対象外（航空会社の整備施設のみ） */
+];
+
+/* rarityはデータとして保持するが、バッジ表示はしない（2026-07-15 CEO指示） */
+
+/* インデックス構築 */
+const SPOT_INDEX = {};
+STATIONS.forEach(st=>{ st.spots.forEach(s=>{ s.st=st.id; SPOT_INDEX[s.id]=s; }); });
+function stById(id){ return STATIONS.find(s=>s.id===id); }
+function stLines(st){ return LINES.filter(l=>l.st.includes(st.id)); }
+function totalSpots(){ return Object.keys(SPOT_INDEX).length; }
+
+/* ============================================================
+   STATE: spotId -> 'want' | 'went'
+   ============================================================ */
+const SAVE_KEY = "ota_zukan_v2";
+let STATE = {};
+function load(){
+  try{ STATE = JSON.parse(localStorage.getItem(SAVE_KEY)||"{}") || {}; }catch(e){ STATE={}; }
+  // v1（探索ゲーム版）の発見済みスポットを「行った」として引き継ぐ（初回のみ）
+  try{
+    if(!localStorage.getItem(SAVE_KEY)){
+      const v1 = JSON.parse(localStorage.getItem("ota_zukan_v1")||"[]");
+      if(Array.isArray(v1) && v1.length){
+        v1.forEach(id=>{ if(SPOT_INDEX[id]) STATE[id]="went"; });
+        save();
+      }
+    }
+  }catch(e){}
+}
+function save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(STATE)); }catch(e){} }
+function countBy(v){ return Object.values(STATE).filter(x=>x===v).length; }
+function stWent(st){ return st.spots.filter(s=>STATE[s.id]==="went").length; }
+function stWant(st){ return st.spots.filter(s=>STATE[s.id]==="want").length; }
+function stDone(st){ return st.spots.length>0 && stWent(st)===st.spots.length; }
+
+/* ============================================================
+   APP
+   ============================================================ */
+const App = {
+  cur:null,
+
+  start(){ this.show('hub'); },
+
+  show(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if(id==='hub') this.renderHub();
+    if(id==='wish') this.renderWish();
+    if(id==='result') this.renderResult();
+    window.scrollTo(0,0);
+  },
+
+  /* ---------- HUB ---------- */
+  renderHub(){
+    const area=document.getElementById('maparea');
+    area.querySelectorAll('.stnode').forEach(n=>n.remove());
+    STATIONS.forEach((st,i)=>{
+      const el=document.createElement('span');
+      el.className='stnode'+(stDone(st)?' done':(stWent(st)+stWant(st)>0?' some':''));
+      el.style.left=st.pos[0]+'%'; el.style.top=st.pos[1]+'%';
+      el.style.setProperty('--lc', stLines(st)[0]?.color||'#8aa0c8');
+      el.style.animationDelay=(i*18)+'ms';
+      el.innerHTML='<i></i>';
+      area.appendChild(el);
+    });
+    // ピンタップ→駅名の吹き出しを表示（最寄り判定なので正確に狙わなくてよい）
+    // 吹き出しタップ→駅の詳細へ
+    const callout=document.getElementById('mapCallout');
+    callout.classList.remove('show');
+    this.sel=null;
+    callout.onclick=(e)=>{
+      e.stopPropagation();
+      if(this.sel) this.openStation(this.sel);
+    };
+    area.onclick=(e)=>{
+      const r=area.getBoundingClientRect();
+      const x=(e.clientX-r.left)/r.width*100, y=(e.clientY-r.top)/r.height*100;
+      let best=null, bd=Infinity;
+      STATIONS.forEach(st=>{
+        const d=Math.hypot(st.pos[0]-x, st.pos[1]-y);
+        if(d<bd){ bd=d; best=st; }
+      });
+      area.querySelectorAll('.stnode.sel').forEach(n=>n.classList.remove('sel'));
+      if(best && bd<9){
+        this.sel=best.id;
+        const idx=STATIONS.indexOf(best);
+        area.querySelectorAll('.stnode')[idx]?.classList.add('sel');
+        callout.innerHTML=`🚉 ${best.name}<small>タップでスポット一覧へ ›</small>`;
+        callout.style.left=Math.min(82, Math.max(18, best.pos[0]))+'%';
+        callout.style.top=best.pos[1]+'%';
+        callout.classList.remove('show'); void callout.offsetWidth;
+        callout.classList.add('show');
+      }else{
+        this.sel=null;
+        callout.classList.remove('show');
+      }
+    };
+    const went=countBy('went'), want=countBy('want'), total=totalSpots();
+    document.getElementById('hubProg').style.width=(went/total*100)+'%';
+    document.getElementById('hubStat').textContent=`行った ${went}/${total} スポット ・ 行きたい ${want}件`;
+    document.getElementById('wishCount').textContent= want? ` ${want}`:'';
+    // 駅リスト（路線ごと・重複駅は初出のみ）
+    const list=document.getElementById('stList'); list.innerHTML='';
+    const seen=new Set();
+    LINES.forEach(line=>{
+      const sts=line.st.filter(id=>!seen.has(id));
+      if(!sts.length) return;
+      const h=document.createElement('div'); h.className='linehead';
+      h.style.setProperty('--lc', line.color);
+      h.textContent=line.name;
+      list.appendChild(h);
+      sts.forEach(id=>{
+        seen.add(id);
+        const st=stById(id); if(!st) return;
+        const row=document.createElement('button'); row.className='strow';
+        row.style.setProperty('--lc', line.color);
+        const cnt = st.spots.length
+          ? `<span class="cnt"><b>✔ ${stWent(st)}/${st.spots.length}</b>　<em>⭐ ${stWant(st)}</em>${stDone(st)?' 🏅':''}</span>`
+          : `<span class="cnt">準備中</span>`;
+        row.innerHTML=`<span class="nm">${st.name}</span>${cnt}`;
+        row.onclick=()=>this.openStation(st.id);
+        list.appendChild(row);
+      });
+    });
+  },
+
+  /* ---------- STATION ---------- */
+  openStation(id){
+    this.cur=stById(id);
+    document.getElementById('stName').textContent='🚉 '+this.cur.name;
+    document.getElementById('stLines').textContent=stLines(this.cur).map(l=>l.name).join(' / ');
+    this.renderSpots();
+    this.show('station');
+  },
+  renderSpots(){
+    const box=document.getElementById('spotList'); box.innerHTML='';
+    if(!this.cur.spots.length){
+      box.innerHTML='<div class="empty">この駅のスポットは準備中です。<br>おすすめの場所があれば教えてください。</div>';
+      return;
+    }
+    this.cur.spots.forEach(s=>{
+      const st8=STATE[s.id]||'';
+      const card=document.createElement('div'); card.className='spot2';
+      card.innerHTML=`
+        <div class="hd">
+          <div class="ic">${s.icon}</div>
+          <div>
+            <div class="nm">${s.name}</div>
+            <div class="tv">${s.trivia}</div>
+            ${s.walk?`<div class="stinfo">🚶 駅から徒歩約${s.walk}分</div>`:''}
+          </div>
+        </div>
+        <div class="tri">
+          <button class="tbtn want ${st8==='want'?'on':''}" onclick="App.toggle('${s.id}','want')">⭐ 行きたい</button>
+          <button class="tbtn went ${st8==='went'?'on':''}" onclick="App.toggle('${s.id}','went')">✅ 行った</button>
+        </div>`;
+      box.appendChild(card);
+    });
+  },
+  toggle(spotId, val){
+    if(STATE[spotId]===val) delete STATE[spotId];
+    else STATE[spotId]=val;
+    save();
+    this.renderSpots();
+  },
+
+  /* ---------- WISH LIST ---------- */
+  renderWish(){
+    const box=document.getElementById('wishBody'); box.innerHTML='';
+    let any=false;
+    STATIONS.forEach(st=>{
+      const wants=st.spots.filter(s=>STATE[s.id]==='want');
+      if(!wants.length) return;
+      any=true;
+      const g=document.createElement('div'); g.className='wishgroup';
+      g.innerHTML=`<h3>🚉 ${st.name}</h3>`;
+      wants.forEach(s=>{
+        const card=document.createElement('div'); card.className='spot2';
+        card.innerHTML=`
+          <div class="hd">
+            <div class="ic">${s.icon}</div>
+            <div>
+              <div class="nm">${s.name}</div>
+              <div class="tv">${s.trivia}</div>
+            </div>
+          </div>
+          <div class="tri">
+            <button class="tbtn went" onclick="App.wentFromWish('${s.id}')">✅ 行った！</button>
+            <button class="tbtn" onclick="App.dropWish('${s.id}')">リストから外す</button>
+          </div>`;
+        g.appendChild(card);
+      });
+      box.appendChild(g);
+    });
+    if(!any) box.innerHTML='<div class="empty">「行きたい」はまだありません。<br>駅のスポットで ⭐ を押すとここにたまります。</div>';
+  },
+  wentFromWish(id){ STATE[id]='went'; save(); this.renderWish(); },
+  dropWish(id){ delete STATE[id]; save(); this.renderWish(); },
+
+  /* ---------- RESULT CARD ---------- */
+  renderResult(){
+    const cv=document.getElementById('resultCanvas'), x=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const went=countBy('went'), want=countBy('want'), total=totalSpots();
+    const pct=Math.round(went/total*100);
+    // 背景
+    const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#15233f'); g.addColorStop(.55,'#0e1730'); g.addColorStop(1,'#0a0f1e');
+    x.fillStyle=g; x.fillRect(0,0,W,H);
+    // 枠（角丸＋コーナー飾り）
+    x.strokeStyle='#2c395a'; x.lineWidth=3;
+    this.roundRect(x,16,16,W-32,H-32,22); x.stroke();
+    x.fillStyle='#ffcc44';
+    [[36,36],[W-36,36],[36,H-36],[W-36,H-36]].forEach(p=>{x.beginPath();x.arc(p[0],p[1],3,0,7);x.fill();});
+    // ヘッダー
+    x.textAlign='center';
+    x.fillStyle='#ffcc44'; x.font='900 34px sans-serif';
+    x.fillText('サンポット図鑑', W/2, 84);
+    x.fillStyle='#9fb0d0'; x.font='700 14px sans-serif';
+    x.fillText('大田区スポットめぐり ・ マスター度しんだん', W/2, 112);
+    // リングゲージ
+    const cx=W/2, cy=272, R=118, lw=16;
+    x.lineCap='round';
+    x.strokeStyle='#223052'; x.lineWidth=lw;
+    x.beginPath(); x.arc(cx,cy,R,0,Math.PI*2); x.stroke();
+    if(pct>0){
+      const rg=x.createLinearGradient(cx-R,cy,cx+R,cy);
+      rg.addColorStop(0,'#4fd1c5'); rg.addColorStop(1,'#ffcc44');
+      x.strokeStyle=rg;
+      const a0=-Math.PI/2;
+      x.beginPath(); x.arc(cx,cy,R,a0,a0+Math.PI*2*(pct/100)); x.stroke();
+    }
+    x.fillStyle='#eaf0ff'; x.font='900 76px sans-serif';
+    x.fillText(pct+'%', cx, cy+6);
+    x.fillStyle='#9fb0d0'; x.font='600 15px sans-serif';
+    x.fillText('行った '+went+' / '+total+' ・ 行きたい '+want, cx, cy+44);
+    // 称号（ピルバッジ）
+    const rank = pct>=100?'大田区マスター':pct>=75?'大田区ツウ':pct>=50?'大田区たんてい':pct>=25?'ご近所さん':'散歩デビュー';
+    x.font='900 24px sans-serif';
+    const tw=x.measureText('称号：'+rank).width;
+    x.fillStyle='rgba(79,209,197,.12)';
+    this.roundRect(x,cx-tw/2-20,436,tw+40,44,22); x.fill();
+    x.strokeStyle='rgba(79,209,197,.5)'; x.lineWidth=1.5;
+    this.roundRect(x,cx-tw/2-20,436,tw+40,44,22); x.stroke();
+    x.fillStyle='#4fd1c5';
+    x.fillText('称号：'+rank, cx, 466);
+    // ミニマップ（実形の大田区・コンプ駅が金色に）
+    const MS=2.9, MOX=(W-100*MS)/2, MOY=440;
+    const mapX=p=>MOX+p[0]*MS, mapY=p=>MOY+p[1]*MS;
+    OTA_OUTLINE.forEach(o=>{
+      x.beginPath();
+      o.forEach((p,i)=>{ i?x.lineTo(mapX(p),mapY(p)):x.moveTo(mapX(p),mapY(p)); });
+      x.closePath();
+      x.fillStyle='#1d2c4d'; x.fill();
+      x.strokeStyle='#39508a'; x.lineWidth=1.2; x.stroke();
+    });
+    STATIONS.forEach(st=>{
+      const zx=mapX(st.pos), zy=mapY(st.pos);
+      const done=stDone(st), some=stWent(st)>0;
+      x.beginPath(); x.arc(zx,zy,6,0,7);
+      x.fillStyle= done?'#ffcc44': some?'#2c6660':'#22304f';
+      x.fill();
+      x.strokeStyle= done?'#fff3c4': some?'#4fd1c5':'#3a4a72'; x.lineWidth= done?2:1.2; x.stroke();
+    });
+  },
+  _dataURL(){ return document.getElementById('resultCanvas').toDataURL('image/png'); },
+  saveImage(){
+    const went=countBy('went');
+    const a=document.createElement('a'); a.href=this._dataURL();
+    a.download='sanpot-zukan-'+Math.round(went/totalSpots()*100)+'.png'; a.click();
+  },
+  async shareImage(){
+    const pct=Math.round(countBy('went')/totalSpots()*100);
+    try{
+      const blob=await (await fetch(this._dataURL())).blob();
+      const file=new File([blob],'sanpot-zukan.png',{type:'image/png'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], text:'大田区マスター度 '+pct+'%！'});
+        return;
+      }
+    }catch(e){}
+    this.saveImage();
+    alert('画像を保存しました。SNSに貼って自慢してください！');
+  },
+
+  roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+};
+
+/* ハブSVGに実形の大田区と路線を描く（初回のみ） */
+function buildHubMap(){
+  const g=document.getElementById('landG');
+  g.innerHTML=OTA_OUTLINE.map(o=>
+    '<path class="land" vector-effect="non-scaling-stroke" d="M'+o.map(p=>p[0]+','+p[1]).join('L')+'Z"/>'
+  ).join('');
+  const rg=document.getElementById('railG');
+  rg.innerHTML=LINES.map(line=>{
+    const d=line.st.map((id,i)=>{const st=stById(id);return (i?'L':'M')+st.pos[0]+','+st.pos[1];}).join('');
+    return `<path class="rail" vector-effect="non-scaling-stroke" stroke="${line.color}" d="${d}"/>`;
+  }).join('');
+}
+
+/* init */
+load();
+buildHubMap();
+</script>
+</body>
+</html>
